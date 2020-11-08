@@ -1,6 +1,7 @@
 package com.example.firebaseobjectrecognition;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -10,6 +11,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
@@ -33,6 +35,17 @@ import com.google.mlkit.vision.label.ImageLabeler;
 import com.google.mlkit.vision.label.ImageLabeling;
 import com.google.mlkit.vision.label.automl.AutoMLImageLabelerLocalModel;
 import com.google.mlkit.vision.label.automl.AutoMLImageLabelerOptions;
+import com.otaliastudios.cameraview.BitmapCallback;
+import com.otaliastudios.cameraview.CameraListener;
+import com.otaliastudios.cameraview.CameraOptions;
+import com.otaliastudios.cameraview.CameraView;
+import com.otaliastudios.cameraview.PictureResult;
+import com.otaliastudios.cameraview.controls.Mode;
+
+import org.jetbrains.annotations.NotNull;
+
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 
 @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
@@ -47,6 +60,8 @@ public class MainActivity extends AppCompatActivity {
     private TextView feature;
     private TextView probability;
     private int rotation;
+    private CameraView cameraView;
+
 
 
     private static final SparseIntArray ORIENTATIONS = new SparseIntArray();
@@ -67,142 +82,100 @@ public class MainActivity extends AppCompatActivity {
         feature = findViewById(R.id.feature);
         probability = findViewById(R.id.probability);
 
-        if(!hasCamera()){
-            btnCapture.setEnabled(false);
-        }
+        cameraView = findViewById(R.id.cameraView);
+        cameraView.setMode(Mode.PICTURE);
+        cameraView.setLifecycleOwner(this);
 
         btnCapture.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                takePicture();
+                if(cameraView.isOpened()){
+                    takePicture();
+                }else{
+                    cameraView.open();
+                }
             }
         });
 
     }
 
-    private boolean hasCamera(){
-        if(getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)){
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-                    != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this,new String[]{Manifest.permission.CAMERA},
-                        MY_CAMERA_REQUEST_CODE);
-            }
-            return true;
-        }else{
-            return false;
-        }
-    }
 
     public void takePicture(){
-        Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
-        startActivityForResult(intent,2);
-    }
 
-    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    @Override
-    protected void onActivityResult(int requestCode,int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        Bundle extras = data.getExtras();
-        bitmap = (Bitmap) extras.get("data");
-
-        if (requestCode == 2) {
-            if (resultCode == RESULT_OK) {
-                Toast.makeText(this, "Image Saved to:\n" +
-                        bitmap, Toast.LENGTH_LONG).show();
-
-                imageView.setImageBitmap(bitmap);
-                InputImage image = InputImage.fromBitmap(bitmap,0);
-
-                AutoMLImageLabelerLocalModel localModel =
-                        new AutoMLImageLabelerLocalModel.Builder()
+        cameraView.addCameraListener(new CameraListener() {
+            @Override
+            public void onPictureTaken(@NotNull PictureResult result){
+                result.toBitmap(new BitmapCallback() {
+                    @Override
+                    public void onBitmapReady(@Nullable Bitmap bitmap) {
+                        imageView.setImageBitmap(bitmap);
+                        InputImage image = InputImage.fromBitmap(bitmap,0);
+                        Log.d(TAG,String.valueOf(image));
+                        AutoMLImageLabelerLocalModel localModel = new AutoMLImageLabelerLocalModel.Builder()
                                 .setAssetFilePath("manifest.json")
                                 // or .setAbsoluteFilePath(absolute file path to manifest file)
+                                //.setAbsoluteFilePath("fine-grain/manifest.json")
                                 .build();
 
-                AutoMLImageLabelerOptions autoMLImageLabelerOptions =
-                        new AutoMLImageLabelerOptions.Builder(localModel)
-                                .setConfidenceThreshold(0.0f)  // Evaluate your model in the Firebase console
-                                // to determine an appropriate value.
-                                .build();
-                ImageLabeler labeler = ImageLabeling.getClient(autoMLImageLabelerOptions);
 
-                labeler.process(image)
-                        .addOnSuccessListener(new OnSuccessListener<List<ImageLabel>>() {
-                            @Override
-                            public void onSuccess(List<ImageLabel> labels) {
+                        AutoMLImageLabelerOptions autoMLImageLabelerOptions =
+                                new AutoMLImageLabelerOptions.Builder(localModel)
+                                        .setConfidenceThreshold(0.0f)  // Evaluate your model in the Firebase console
+                                        // to determine an appropriate value.
+                                        .build();
+                        ImageLabeler labeler = ImageLabeling.getClient(autoMLImageLabelerOptions);
 
-//                        for (ImageLabel label : labels) {
-//                            String text = label.getText();
-//                            float confidence = label.getConfidence();
-//                            int index = label.getIndex();
-//                            Log.d(TAG,text);
-//                            Log.d(TAG,String.valueOf(confidence));
-//                            Log.d(TAG,String.valueOf(index));
-//                            text1.setText(text);
+                        labeler.process(image)
+                                .addOnSuccessListener(new OnSuccessListener<List<ImageLabel>>() {
+                                    @Override
+                                    public void onSuccess(List<ImageLabel> labels) {
 
-                                String text = labels.get(0).getText();
-                                float confidence = labels.get(0).getConfidence();
-                                Log.d(TAG,text);
-                                Log.d(TAG,String.valueOf(confidence));
+                                        String text = labels.get(0).getText();
+                                        float confidence = labels.get(0).getConfidence();
+                                        Log.d(TAG,text);
+                                        Log.d(TAG,String.valueOf(confidence));
 
-                                if(confidence >= 0.75){
-                                    feature.setText(text);
-                                    probability.setText(String.valueOf(confidence));
-                                }
-                            }
-                        })
+                                        if(confidence >= 0.30){
+                                            feature.setText(text);
+                                            probability.setText(String.valueOf(confidence));
+                                        }
+                                    }
+                                })
 
-                        .addOnFailureListener(new OnFailureListener() {
-                            @Override
-                            public void onFailure(@NonNull Exception e) {
-                                // Task failed with an exception
-                                // ...
-                            }
-                        });
-
-            } else if (requestCode == RESULT_CANCELED) {
-                Toast.makeText(this, "Image cancelled. ",
-                        Toast.LENGTH_LONG).show();
-            } else {
-                Toast.makeText(this, "Failed to capture image",
-                        Toast.LENGTH_LONG).show();
+                                .addOnFailureListener(new OnFailureListener() {
+                                    @Override
+                                    public void onFailure(@NonNull Exception e) {
+                                        // Task failed with an exception
+                                        Log.d(TAG,"failed to identify object");
+                                    }
+                                });
+                        cameraView.close();
+                    }
+                });
             }
-        }
+        });
+        cameraView.takePicture();
+    }
+
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        cameraView.open();
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == MY_CAMERA_REQUEST_CODE) {
-            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, "camera permission granted", Toast.LENGTH_LONG).show();
-            } else {
-                Toast.makeText(this, "camera permission denied", Toast.LENGTH_LONG).show();
-            }
-        }
+    protected void onPause() {
+        super.onPause();
+        cameraView.close();
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    private int getRotationCompensation(String cameraId, Activity activity, boolean isFrontFacing)
-            throws CameraAccessException {
-        // Get the device's current rotation relative to its "native" orientation.
-        // Then, from the ORIENTATIONS table, look up the angle the image must be
-        // rotated to compensate for the device's rotation.
-        int deviceRotation = activity.getWindowManager().getDefaultDisplay().getRotation();
-        int rotationCompensation = ORIENTATIONS.get(deviceRotation);
-
-        // Get the device's sensor orientation.
-        CameraManager cameraManager = (CameraManager) activity.getSystemService(CAMERA_SERVICE);
-        int sensorOrientation = cameraManager
-                .getCameraCharacteristics(cameraId)
-                .get(CameraCharacteristics.SENSOR_ORIENTATION);
-
-        if (isFrontFacing) {
-            rotationCompensation = (sensorOrientation + rotationCompensation) % 360;
-        } else { // back-facing
-            rotationCompensation = (sensorOrientation - rotationCompensation + 360) % 360;
-        }
-        return rotationCompensation;
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        cameraView.destroy();
     }
+
+
 }
 
