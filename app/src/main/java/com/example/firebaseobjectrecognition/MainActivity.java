@@ -30,7 +30,7 @@ import java.util.List;
 
 @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
 public class MainActivity extends AppCompatActivity {
-    
+
     private static final String TAG = "Probability";
 
     private Button btnCapture;
@@ -43,6 +43,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        getSupportActionBar().setTitle("HebiSoft");
 
         btnCapture = findViewById(R.id.button);
         imageView = findViewById(R.id.imageView);
